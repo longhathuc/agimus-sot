@@ -26,7 +26,8 @@
 
 import numpy as np
 from dynamic_graph import plug
-from dynamic_graph.sot.core import FeaturePose, Task as SotTask
+from dynamic_graph.sot.core.feature_pose import FeaturePose
+from . import SotTask
 
 from .task import Task
 from dynamic_graph.entity import Entity

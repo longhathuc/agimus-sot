@@ -26,12 +26,12 @@
 
 import numpy as np
 from dynamic_graph import plug
-from dynamic_graph.sot.core import FeaturePose, Task as SotTask
+from . import SotTask, FeaturePose
 
 from agimus_sot.sot import SafeGainAdaptive
 from .task import Task
 from agimus_sot.tools import _createOpPoint, assertEntityDoesNotExist, \
-    matrixHomoInverse, matrixHomoProduct, se3ToTuple
+    matrixHomoInverse, matrixHomoProduct, se3ToTuple, entityIfMatrixHomo
 
 ## \brief A pregrasp (and preplace) task.
 # It creates a task to pose of the gripper with respect to the handle.
@@ -87,7 +87,7 @@ class PreGrasp (Task):
                 if self.handle.robotName != self.otherHandle.robotName and \
                         self.gripper.robotName == self.otherHandle.robotName:
                     # locally inverse the gripper and the handle
-                    print("swapping gripper {} and handle {}".format(self.gripper, self.handle))
+                    print("swapping gripper {} and handle {}".format(self.gripper.fullName, self.handle.fullName))
                     self.gripper, self.handle = self.handle, self.gripper
                 self._makeAbsoluteBasedOnOther (sotrobot,
                         withMeasurementOfObjectPos, withMeasurementOfGripperPos,
@@ -103,22 +103,21 @@ class PreGrasp (Task):
     def _plugRobotLink (self, sotrobot, linkName, poseSignal, Jsignal, withMeasurement):
         if withMeasurement:
             _createOpPoint (sotrobot, sotrobot.camera_frame)
-            from agimus_sot.tools import entityIfMatrixHomo
-            oMl = matrixHomoProduct(linkName + self.meas_suffix + "_wrt_world",
+            linkNameMeas = linkName + self.meas_suffix
+            oMl = matrixHomoProduct(linkNameMeas + "_wrt_world",
                     sotrobot.dynamic.signal(sotrobot.camera_frame), None,
-                    check=True)
-            if_ = entityIfMatrixHomo (linkName + self.meas_suffix + "_wrt_world_safe",
-                    name,
+                    check=False)
+            if_ = entityIfMatrixHomo (linkNameMeas + "_wrt_world_safe",
                     condition=None,
                     value_then=oMl.sout,
                     value_else=sotrobot.dynamic.signal(linkName),
-                    check=True)
-            self.addTfListenerTopic(linkName + self.meas_suffix,
+                    check=False)
+            self.addTfListenerTopic(linkNameMeas,
                     frame0 = sotrobot.camera_frame,
-                    frame1 = linkName + self.meas_suffix,
+                    frame1 = linkNameMeas,
                     signalGetters = [ (oMl.sin1, if_.condition), ],
                     )
-            plug(if_.out, outSignal)
+            plug(if_.out, poseSignal)
         else:
             plug(sotrobot.dynamic.signal(linkName), poseSignal)
             print("Plug robot link: no measument for " + linkName)
@@ -133,22 +132,22 @@ class PreGrasp (Task):
     #        rest of SoT).
     def _plugObjectLink (self, sotrobot, linkName, outSignal, withMeasurement):
         if withMeasurement:
+            linkNameMeas = linkName + self.meas_suffix
+
             # Create default value
             _createOpPoint (sotrobot, sotrobot.camera_frame)
-            oMl = matrixHomoProduct(linkName + "_wrt_world",
+            oMl = matrixHomoProduct(linkNameMeas + "_wrt_world",
                     sotrobot.dynamic.signal(sotrobot.camera_frame),
                     None,
                     check=False,)
-            from agimus_sot.tools import entityIfMatrixHomo
-            # TODO I think this name is not unique
-            name = linkName + self.meas_suffix + "wrt_world"
+            name = linkNameMeas + "wrt_world"
             if_ = entityIfMatrixHomo (name, condition=None,
                     value_then=oMl.sout,
                     value_else=None,
-                    check=True)
-            self.addTfListenerTopic (linkName + self.meas_suffix,
+                    check=False)
+            self.addTfListenerTopic (linkNameMeas,
                     frame0 = sotrobot.camera_frame,
-                    frame1 = linkName + self.meas_suffix,
+                    frame1 = linkNameMeas,
                     signalGetters = [(oMl.sin1, if_.condition),],
                     )
             self.addHppJointTopic (linkName, signalGetters = [ if_.else_, ],)
@@ -378,22 +377,49 @@ class PreGrasp (Task):
             plug(self.jbMfb.sout, self.feature.jbMfb)
         elif method == 1:
             # jbMfb        = ogMo * oMh
-            self.jbMfb = matrixHomoProduct (name + "_jbMfb",
-                None,                    # ogMo -> TF
-                self.handle.lMf,         # oMh
-                )
-            plug(self.jbMfb.sout, self.feature.jbMfb)
-            # ogMo
-            self._defaultValue, signals = \
-                    self.makeTfListenerDefaultValue(name+"_defaultValue",
-                            self.otherGripper.lMf * self.otherHandle.lMf.inverse(),
-                            outputs = self.jbMfb.sin0)
-            self.addTfListenerTopic (
-                    self.otherHandle.fullLink + self.meas_suffix + "_wrt_" + self.otherGripper.link + self.meas_suffix,
-                    frame0 = self.otherGripper.link + self.meas_suffix,
-                    frame1 = self.otherHandle.fullLink + self.meas_suffix,
-                    signalGetters = [ signals, ],
+            # Two options for ogMo measured:
+            if withMeasurementOfOtherGripperPos:
+                self.jbMfb = matrixHomoProduct (name + "_jbMfb",
+                    None,                    # ogMo -> TF
+                    self.handle.lMf,         # oMh
                     )
+                plug(self.jbMfb.sout, self.feature.jbMfb)
+                # We use TF to get the position of the otherHandle wrt to the otherGripper
+                self._defaultValue, signals = \
+                        self.makeTfListenerDefaultValue(name+"_defaultValue",
+                                self.otherGripper.lMf * self.otherHandle.lMf.inverse(),
+                                outputs = self.jbMfb.sin0)
+                self.addTfListenerTopic (
+                        self.otherHandle.fullLink + self.meas_suffix + "_wrt_" + self.otherGripper.link + self.meas_suffix,
+                        frame0 = self.otherGripper.link + self.meas_suffix,
+                        frame1 = self.otherHandle.fullLink + self.meas_suffix,
+                        signalGetters = [ signals, ],
+                        )
+            else:
+                ogMo = matrixHomoProduct(name + "_jbMfb_meas",
+                        matrixHomoInverse (self.otherGripper.link + "_inv", sotrobot.dynamic.signal(self.otherGripper.link)).sout,
+                        sotrobot.dynamic.signal(sotrobot.camera_frame),
+                        None, # Tf
+                        self.handle.lMf,
+                        check=True,)
+                if_ = entityIfMatrixHomo (name + "_jbMfb_cond",
+                        condition=None,
+                        value_then=ogMo.sout,
+                        value_else=self.otherGripper.lMf * self.otherHandle.lMf.inverse() * self.handle.lMf,
+                        check=True)
+                plug(if_.out, self.feature.jbMfb)
+                # We use TF to get the position of the otherHandle wrt to the camera
+                # and then we compute
+                # Who should we trust ?
+                # - other grasp: i.e. wMjb = wMog = wMc * cMo (measured) * oMog, jbMfb = ogMo (constant) * oMh
+                # - kinematics: i.e. wMjb = wMog(q), jbMfb = ogMw(q) * wMc(q) * cMo (measured) * oMh  (needs good localisation)
+                # Below we trust kinematics
+                self.addTfListenerTopic (
+                        self.otherHandle.fullLink + self.meas_suffix,
+                        frame0 = sotrobot.camera_frame,
+                        frame1 = self.handle.fullLink + self.meas_suffix,
+                        signalGetters = [ (ogMo.sin2, if_.condition), ],
+                        )
 
             self.addHppJointTopic (self.handle.fullLink)
 

@@ -88,8 +88,9 @@ def transQuatToSE3 (p):
     return SE3 (Quaternion (p[6],p[3],p[4],p[5]).matrix(), matrix(p[0:3]).transpose())
 
 def se3ToTuple (M):
-    from dynamic_graph.sot.core.matrix_util import matrixToTuple
-    return matrixToTuple (M.homogeneous)
+    import warnings
+    warnings.warn("use M.homogeneous", DeprecationWarning)
+    return M.homogeneous
 
 def computeControlSelection (robot, joint_to_be_removed):
     pinmodel = robot.dynamic.model
@@ -107,9 +108,9 @@ def plugMatrixHomo(sigout, sigin):
     from dynamic_graph.signal_base import SignalBase
     from pinocchio import SE3
     if isinstance(sigout, tuple):
-        sigin.value = sigout
+        sigin.value = np.array(sigout)
     elif isinstance(sigout, SE3):
-        sigin.value = se3ToTuple(sigout)
+        sigin.value = sigout.homogeneous
     elif isinstance(sigout, SignalBase):
         plug(sigout, sigin)
 
@@ -118,8 +119,12 @@ def assertEntityDoesNotExist(name):
     from dynamic_graph.entity import Entity
     assert name not in Entity.entities, "Entity " + name + " already exists."
 
+def entityExists(name):
+    from dynamic_graph.entity import Entity
+    return name in Entity.entities
+
 def matrixHomoProduct(name, *args, **kwargs):
-    from dynamic_graph.sot.core import Multiply_of_matrixHomo
+    from dynamic_graph.sot.core.operator import Multiply_of_matrixHomo
     if kwargs.get('check',True): assertEntityDoesNotExist(name)
     ent = Multiply_of_matrixHomo (name)
     ent.setSignalNumber(len(args))
@@ -129,7 +134,7 @@ def matrixHomoProduct(name, *args, **kwargs):
     return ent
 
 def matrixHomoInverse(name, valueOrSignal=None, check=True):
-    from dynamic_graph.sot.core import Inverse_of_matrixHomo
+    from dynamic_graph.sot.core.operator import Inverse_of_matrixHomo
     if check: assertEntityDoesNotExist(name)
     ent = Inverse_of_matrixHomo (name)
     plugMatrixHomo(valueOrSignal, ent.sin)

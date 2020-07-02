@@ -24,6 +24,10 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+from dynamic_graph.sot.core.task import Task as SotTask
+from dynamic_graph.sot.core.gain_adaptive import GainAdaptive
+from dynamic_graph.sot.core.feature_pose import FeaturePose
+
 from .com import COM
 from .end_effector import EndEffector
 from .foot import Foot

@@ -25,7 +25,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 from dynamic_graph import plug
-from dynamic_graph.sot.core import FeaturePose, GainAdaptive, Task as SotTask
+from . import FeaturePose, GainAdaptive, SotTask
 from dynamic_graph.sot.core.meta_tasks import setGain
 
 from .task import Task
